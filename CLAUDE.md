@@ -1,5 +1,20 @@
 # 단원별 문제 풀이' 및 '풀이 이력 조회' API 구축
 
+## 스킬 (자동 적용 규칙)
+이 프로젝트에는 `.claude/skills/` 에 아래 스킬이 있다. 작업 시 반드시 해당 스킬의 지침을 따른다.
+
+| 스킬 파일 | 적용 시점 |
+|-----------|----------|
+| `implementation-plan.md` | 기능 구현 요청 시 → 계획서 작성 후 사용자 확인, `/docs/plans/`에 저장 |
+| `requirement-history.md` | 기능/개선/버그 요청 시 → `/docs/requirements.md` 기록 |
+| `spring-test.md` | 코드 구현 후 → 단위/통합 테스트 작성 |
+| `verify_implementation.md` | 커밋 전 → 빌드·테스트 검증 |
+| `unit-commit.md` | 작업 단위 완료 시 → git commit (Entity, Service, Controller, 테스트 각각) |
+| `architecture-docs.md` | Entity·서비스 구조 변경 시 → `/docs/architecture.md` 업데이트 |
+| `update-readme.md` | 모든 작업 완료 후 → README.md 업데이트 |
+
+각 스킬 파일의 전체 지침은 `.claude/skills/<파일명>`을 읽어 확인한다.
+
 ## 기술스택
 1. java 21
 2. spring
