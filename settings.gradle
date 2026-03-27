@@ -1,0 +1,5 @@
+rootProject.name = 'problem-solving'
+
+include 'core'
+include 'api'
+include 'batch'
