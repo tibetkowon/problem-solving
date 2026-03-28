@@ -39,5 +39,23 @@ services:
       redis:
         condition: service_started
 
+  batch:
+    image: ${DOCKER_USERNAME}/problem-solving-batch:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.batch
+    environment:
+      SPRING_PROFILES_ACTIVE: server
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
+      DB_USERNAME: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
 volumes:
   mysql-data:

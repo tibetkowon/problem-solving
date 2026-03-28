@@ -14,15 +14,6 @@ public interface UserProblemRepository extends JpaRepository<UserProblem, Long> 
     @Query("SELECT up.problem.id FROM UserProblem up WHERE up.userId = :userId AND up.skippedAt IS NULL")
     List<Long> findSolvedProblemIdsByUserId(@Param("userId") Long userId);
 
-    // 직전에 건너뛴 문제 조회 (가장 최근 skipped 1건)
-    @Query("""
-            SELECT up FROM UserProblem up
-            WHERE up.userId = :userId AND up.problem.chapter.id = :chapterId AND up.skippedAt IS NOT NULL
-            ORDER BY up.skippedAt DESC
-            LIMIT 1
-            """)
-    Optional<UserProblem> findLastSkippedProblem(@Param("userId") Long userId, @Param("chapterId") Long chapterId);
-
     // 사용자가 푼 문제 목록 (풀이 완료, 최신순)
     @Query("""
             SELECT up FROM UserProblem up
