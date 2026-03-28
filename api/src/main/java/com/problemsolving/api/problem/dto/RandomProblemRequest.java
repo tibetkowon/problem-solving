@@ -15,7 +15,4 @@ public class RandomProblemRequest {
     @NotNull(message = "사용자 ID는 필수입니다.")
     @Schema(description = "사용자 ID", example = "1")
     private Long userId;
-
-    @Schema(description = "건너뛸 문제 ID (선택). 전달 시 해당 문제를 제외하고 다음 문제를 반환합니다.", example = "2")
-    private Long skipProblemId;
 }
