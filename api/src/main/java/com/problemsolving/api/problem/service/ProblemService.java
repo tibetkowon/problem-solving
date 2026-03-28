@@ -45,17 +45,17 @@ public class ProblemService {
         List<Long> solvedIds = userProblemRepository.findSolvedProblemIdsByUserId(userId);
         allProblemIds.removeAll(solvedIds);
 
-        // 건너뛴 문제 처리: skipProblemId가 있으면 Redis에 저장 후 목록에서 제외
+        // 직전에 건너뛴 문제 Redis에서 조회하여 제외
+        Long lastSkippedId = correctRateRedisService.getLastSkippedProblemId(userId, chapterId);
+        if (lastSkippedId != null) {
+            allProblemIds.remove(lastSkippedId);
+        }
+
+        // 현재 건너뛰는 문제가 있으면 Redis에 저장 후 목록에서 제외
         Long skipProblemId = request.getSkipProblemId();
         if (skipProblemId != null) {
             correctRateRedisService.saveSkippedProblem(userId, chapterId, skipProblemId);
             allProblemIds.remove(skipProblemId);
-        } else {
-            // skipProblemId 없으면 직전에 건너뛴 문제 Redis에서 조회하여 제외
-            Long lastSkippedId = correctRateRedisService.getLastSkippedProblemId(userId, chapterId);
-            if (lastSkippedId != null) {
-                allProblemIds.remove(lastSkippedId);
-            }
         }
 
         if (allProblemIds.isEmpty()) {
