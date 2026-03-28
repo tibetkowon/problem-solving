@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# 환경변수 (민감 정보)
+.env
+
+# Claude - 개인 환경설정 제외
+.claude/launch.json
+.claude/settings.local.json
+.claude/memory/
