@@ -66,7 +66,7 @@ docker compose up -d
 
 | 변수명 | 설명 | 예시 |
 |--------|------|------|
-| `DOCKER_USERNAME` | Docker Hub 아이디 | `myusername` |
+| `DOCKER_USERNAME` | Docker Hub 아이디 (GitHub Actions CI/CD 전용, 로컬 실행 불필요) | `myusername` |
 | `MYSQL_ROOT_PASSWORD` | MySQL root 비밀번호 | `rootpassword` |
 | `MYSQL_DATABASE` | DB 이름 | `problemsolving` |
 | `MYSQL_USER` | DB 유저명 | `appuser` |
