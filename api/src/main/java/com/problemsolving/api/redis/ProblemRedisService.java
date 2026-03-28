@@ -1,5 +1,6 @@
 package com.problemsolving.api.redis;
 
+import com.problemsolving.core.repository.ProblemCorrectRateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,7 @@ import java.time.Duration;
  *   Key:   correct_rate:{problemId}
  *   Field: submit  → 제출 수
  *          correct → 정답 수
+ *   fallback: Redis 미존재 시 DB(problem_correct_rate) 조회 후 캐시 워밍업
  *
  * [현재 노출 문제] Redis String 구조:
  *   Key:   current:{userId}:{chapterId}
@@ -37,6 +39,7 @@ public class ProblemRedisService {
     private static final Duration SESSION_TTL = Duration.ofHours(1);
 
     private final RedisTemplate<String, String> redisTemplate;
+    private final ProblemCorrectRateRepository problemCorrectRateRepository;
 
     // ── 정답률 관련 ────────────────────────────────────────────────
 
@@ -53,41 +56,34 @@ public class ProblemRedisService {
     }
 
     /**
-     * 문제 조회 시 정답률을 계산해 반환한다.
-     * 제출 수가 30명 미만이면 null을 반환한다.
-     * 30명 이상이면 소수점 첫째 자리에서 반올림한 정수(%)를 반환한다.
+     * 정답률을 조회한다.
+     * Redis에 데이터가 있으면 Redis에서, 없으면 DB에서 조회한다.
+     * DB에서 조회한 경우 Redis에 캐싱하여 이후 요청은 Redis에서 처리한다.
+     * 제출 수 30명 미만(Redis/DB 모두)이면 null을 반환한다.
      */
     public Integer getCorrectRate(Long problemId) {
         String key = correctRateKey(problemId);
         Object submitObj = redisTemplate.opsForHash().get(key, FIELD_SUBMIT);
-        Object correctObj = redisTemplate.opsForHash().get(key, FIELD_CORRECT);
 
-        if (submitObj == null) {
-            return null;
+        if (submitObj != null) {
+            // Redis에 데이터 있음
+            long submitCount = Long.parseLong(submitObj.toString());
+            if (submitCount < MIN_SUBMIT_COUNT) return null;
+            Object correctObj = redisTemplate.opsForHash().get(key, FIELD_CORRECT);
+            long correctCount = correctObj != null ? Long.parseLong(correctObj.toString()) : 0;
+            return calcRate(correctCount, submitCount);
         }
 
-        long submitCount = Long.parseLong(submitObj.toString());
-        if (submitCount < MIN_SUBMIT_COUNT) {
-            return null;
-        }
-
-        long correctCount = correctObj != null ? Long.parseLong(correctObj.toString()) : 0;
-        double rate = (double) correctCount / submitCount * 100;
-        return (int) Math.round(rate);
-    }
-
-    /**
-     * Redis에서 정답률 원본 데이터(제출수, 정답수)를 읽는다.
-     * 스케줄러의 DB 백업 시 사용한다.
-     */
-    public long[] getRawCounts(Long problemId) {
-        String key = correctRateKey(problemId);
-        Object submitObj = redisTemplate.opsForHash().get(key, FIELD_SUBMIT);
-        Object correctObj = redisTemplate.opsForHash().get(key, FIELD_CORRECT);
-
-        long submit = submitObj != null ? Long.parseLong(submitObj.toString()) : 0;
-        long correct = correctObj != null ? Long.parseLong(correctObj.toString()) : 0;
-        return new long[]{submit, correct};
+        // Redis에 데이터 없음 → DB fallback
+        return problemCorrectRateRepository.findById(problemId)
+                .filter(pcr -> pcr.getSubmitCount() >= MIN_SUBMIT_COUNT)
+                .map(pcr -> {
+                    // DB 데이터를 Redis에 캐싱 (워밍업)
+                    redisTemplate.opsForHash().put(key, FIELD_SUBMIT, String.valueOf(pcr.getSubmitCount()));
+                    redisTemplate.opsForHash().put(key, FIELD_CORRECT, String.valueOf(pcr.getCorrectCount()));
+                    return calcRate(pcr.getCorrectCount(), pcr.getSubmitCount());
+                })
+                .orElse(null);
     }
 
     // ── 현재 노출 문제 관련 ────────────────────────────────────────────────
@@ -124,7 +120,11 @@ public class ProblemRedisService {
         return value != null ? Long.parseLong(value) : null;
     }
 
-    // ── 키 생성 헬퍼 ────────────────────────────────────────────────
+    // ── 내부 헬퍼 ────────────────────────────────────────────────
+
+    private int calcRate(long correctCount, long submitCount) {
+        return (int) Math.round((double) correctCount / submitCount * 100);
+    }
 
     private String correctRateKey(Long problemId) {
         return CORRECT_RATE_KEY_PREFIX + problemId;
