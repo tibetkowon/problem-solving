@@ -61,4 +61,5 @@ jobs:
           ssh ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_HOST }} \
             "cd ~/problem-solving && \
              docker compose pull api && \
+             docker compose down && \
              docker compose up -d --no-build"
