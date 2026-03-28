@@ -19,8 +19,7 @@
 1. java 21
 2. spring
 3. jpa
-4. mysql - server profile
-5. h2 - local profile
+4. mysql - server/local profile
 6. redis (회원 최근 조회 문제 확인 및 정답률 관리)
 #### 아키텍처
 	- 멀티 모듈 아키텍처를 활용한 설계
@@ -32,5 +31,5 @@
 	- Swagger
 	- README.md
 #### 프로파일
-	- local - local 환경 실행용으로, h2 DB를 사용하며, 테스트용 더미데이터 초기화 필요
+	- local - local 환경 실행용으로, MySQL DB를 사용하며, 테스트용 더미데이터 초기화 필요
 	- server - 배포용으로, github Actions 를 통해 Docker Compose 를 통해 실제 배포에서 사용

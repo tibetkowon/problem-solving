@@ -19,7 +19,7 @@
 | Language | Java 21 |
 | Framework | Spring Boot 3.2.4 |
 | ORM | Spring Data JPA |
-| DB | MySQL 8.0 (server), H2 (local) |
+| DB | MySQL 8.0 |
 | Cache | Redis |
 | Build | Gradle (멀티 모듈) |
 | Docs | SpringDoc OpenAPI (Swagger) |
@@ -36,14 +36,17 @@ problem-solving/
 
 ## 실행 방법
 
-### 로컬 환경 (H2 + local Redis)
+### 로컬 환경 (MySQL + Redis)
 
 ```bash
-# Redis 실행 (Docker 사용 시)
-docker run -d --name redis -p 6379:6379 redis:latest
+# MySQL, Redis 실행
+docker compose up mysql redis -d
 
-# api 서버 실행 (local 프로파일 자동 활성화)
+# api 서버 실행 (local 프로파일 자동 활성화, .env 파일 필요)
 ./gradlew :api:bootRun
+
+# batch 서버 실행 (선택)
+./gradlew :batch:bootRun
 ```
 
 서버 기동 후 Swagger UI: http://localhost:8080/swagger-ui.html
@@ -85,11 +88,10 @@ docker compose up -d
 #### 랜덤 문제 조회 요청/응답
 
 ```json
-// 요청 (skipProblemId는 선택 — 문제 넘기기 시 현재 문제 ID 전달)
+// 요청
 {
   "chapterId": 1,
-  "userId": 1,
-  "skipProblemId": 2
+  "userId": 1
 }
 
 // 응답
@@ -151,7 +153,7 @@ main push → 빌드 & 테스트 → Docker 이미지 빌드 & 푸시 → 서버
 
 ## 더미 데이터 (local 프로파일)
 
-H2 실행 시 `data.sql`이 자동으로 적용됩니다.
+local 프로파일로 실행 시 `data.sql`이 자동으로 적용됩니다.
 
 | 단원 | 문제 수 | 타입 |
 |------|---------|------|
