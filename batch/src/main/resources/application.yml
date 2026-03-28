@@ -10,13 +10,13 @@ spring:
     activate:
       on-profile: local
   datasource:
-    url: jdbc:h2:mem:problemsolving;MODE=MySQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:file:./h2/problemsolving;MODE=MySQL;AUTO_SERVER=TRUE;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
     password:
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: none
     show-sql: true
   data:
     redis:
