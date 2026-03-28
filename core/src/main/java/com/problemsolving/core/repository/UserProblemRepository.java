@@ -14,14 +14,15 @@ public interface UserProblemRepository extends JpaRepository<UserProblem, Long> 
     @Query("SELECT up.problem.id FROM UserProblem up WHERE up.userId = :userId AND up.skippedAt IS NULL")
     List<Long> findSolvedProblemIdsByUserId(@Param("userId") Long userId);
 
-    // 사용자가 푼 문제 목록 (풀이 완료, 최신순)
+    // 사용자가 특정 단원에서 푼 문제 목록 (최신 제출순)
     @Query("""
             SELECT up FROM UserProblem up
             JOIN FETCH up.problem p
-            WHERE up.userId = :userId AND up.skippedAt IS NULL
+            WHERE up.userId = :userId AND p.chapter.id = :chapterId AND up.skippedAt IS NULL
             ORDER BY up.createdAt DESC
             """)
-    List<UserProblem> findSolvedHistoryByUserId(@Param("userId") Long userId);
+    List<UserProblem> findSolvedHistoryByUserIdAndChapterId(
+            @Param("userId") Long userId, @Param("chapterId") Long chapterId);
 
     // 특정 문제의 사용자 풀이 결과 조회
     @Query("""

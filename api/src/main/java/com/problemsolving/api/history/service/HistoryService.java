@@ -3,7 +3,7 @@ package com.problemsolving.api.history.service;
 import com.problemsolving.api.common.exception.ResourceNotFoundException;
 import com.problemsolving.api.history.dto.HistoryDetailResponse;
 import com.problemsolving.api.history.dto.HistoryListResponse;
-import com.problemsolving.api.redis.CorrectRateRedisService;
+import com.problemsolving.api.redis.ProblemRedisService;
 import com.problemsolving.core.domain.problem.entity.Choice;
 import com.problemsolving.core.domain.userproblem.entity.UserProblem;
 import com.problemsolving.core.domain.userproblem.entity.UserProblemChoice;
@@ -24,10 +24,13 @@ public class HistoryService {
     private final UserProblemRepository userProblemRepository;
     private final UserProblemChoiceRepository userProblemChoiceRepository;
     private final ChoiceRepository choiceRepository;
-    private final CorrectRateRedisService correctRateRedisService;
+    private final ProblemRedisService problemRedisService;
 
-    public List<HistoryListResponse> getHistory(Long userId) {
-        return userProblemRepository.findSolvedHistoryByUserId(userId).stream()
+    /**
+     * 특정 단원에서 사용자가 풀었던 문제 목록을 최신 제출순으로 반환한다.
+     */
+    public List<HistoryListResponse> getHistory(Long userId, Long chapterId) {
+        return userProblemRepository.findSolvedHistoryByUserIdAndChapterId(userId, chapterId).stream()
                 .map(HistoryListResponse::new)
                 .toList();
     }
@@ -40,7 +43,7 @@ public class HistoryService {
 
         List<Choice> correctChoices = choiceRepository.findByProblemIdAndIsCorrectTrue(problemId);
         List<UserProblemChoice> userChoices = userProblemChoiceRepository.findByUserProblemId(userProblem.getId());
-        Integer correctRate = correctRateRedisService.getCorrectRate(problemId);
+        Integer correctRate = problemRedisService.getCorrectRate(problemId);
 
         return HistoryDetailResponse.of(userProblem, correctChoices, userChoices, correctRate);
     }
