@@ -154,6 +154,40 @@ class SubmitServiceTest {
         assertThat(response.getAnswerStatus()).isEqualTo(AnswerStatus.WRONG);
     }
 
+    @Test
+    @DisplayName("주관식 문제의 answer가 null이면 WRONG을 반환한다")
+    void 주관식_answer_null_WRONG() {
+        // Given: answer가 null인 주관식 문제 (잘못된 데이터)
+        Chapter chapter = new Chapter("자료구조");
+        Problem nullAnswerProblem = Problem.builder()
+                .chapter(chapter).content("정답 없는 주관식")
+                .type(ProblemType.SUBJECTIVE).explanation("설명").answer(null).build();
+        setId(nullAnswerProblem, 4L);
+
+        given(problemRepository.findById(4L)).willReturn(Optional.of(nullAnswerProblem));
+        SubmitRequest request = buildRequest(4L, ProblemType.SUBJECTIVE, null, "답변");
+
+        // When
+        SubmitResponse response = submitService.submit(request);
+
+        // Then
+        assertThat(response.getAnswerStatus()).isEqualTo(AnswerStatus.WRONG);
+    }
+
+    @Test
+    @DisplayName("주관식 답변이 공백이면 WRONG을 반환한다")
+    void 주관식_공백답변_WRONG() {
+        // Given
+        given(problemRepository.findById(3L)).willReturn(Optional.of(subjectiveProblem));
+        SubmitRequest request = buildRequest(3L, ProblemType.SUBJECTIVE, null, "  ");
+
+        // When
+        SubmitResponse response = submitService.submit(request);
+
+        // Then
+        assertThat(response.getAnswerStatus()).isEqualTo(AnswerStatus.WRONG);
+    }
+
     private SubmitRequest buildRequest(Long problemId, ProblemType type, List<Long> choiceIds, String subjective) {
         SubmitRequest req = new SubmitRequest();
         setFieldValue(req, "problemId", problemId);

@@ -7,7 +7,6 @@ import com.problemsolving.api.problem.service.ProblemService;
 import com.problemsolving.api.redis.CorrectRateRedisService;
 import com.problemsolving.core.constant.ProblemType;
 import com.problemsolving.core.domain.chapter.entity.Chapter;
-import com.problemsolving.core.domain.problem.entity.Choice;
 import com.problemsolving.core.domain.problem.entity.Problem;
 import com.problemsolving.core.repository.ChoiceRepository;
 import com.problemsolving.core.repository.ProblemRepository;
@@ -25,8 +24,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ProblemService 단위 테스트")
@@ -40,25 +40,29 @@ class ProblemServiceTest {
     @InjectMocks
     private ProblemService problemService;
 
-    private RandomProblemRequest request;
     private Chapter chapter;
-    private Problem problem;
+    private Problem problem1;
+    private Problem problem2;
+    private Problem problem3;
 
     @BeforeEach
     void setUp() {
-        request = new RandomProblemRequest();
-        // reflection으로 필드 설정 (또는 @Setter 추가 가능)
-        setField(request, "chapterId", 1L);
-        setField(request, "userId", 1L);
-
         chapter = new Chapter("자료구조");
-        problem = Problem.builder()
-                .chapter(chapter)
-                .content("스택에 대한 설명으로 옳은 것은?")
-                .type(ProblemType.OBJECTIVE_SINGLE)
-                .explanation("스택은 LIFO 방식입니다.")
-                .build();
-        setField(problem, "id", 1L);
+
+        problem1 = Problem.builder()
+                .chapter(chapter).content("스택에 대한 설명은?")
+                .type(ProblemType.OBJECTIVE_SINGLE).explanation("LIFO").build();
+        setField(problem1, "id", 1L);
+
+        problem2 = Problem.builder()
+                .chapter(chapter).content("큐에 대한 설명은?")
+                .type(ProblemType.OBJECTIVE_SINGLE).explanation("FIFO").build();
+        setField(problem2, "id", 2L);
+
+        problem3 = Problem.builder()
+                .chapter(chapter).content("덱에 대한 설명은?")
+                .type(ProblemType.OBJECTIVE_SINGLE).explanation("양방향").build();
+        setField(problem3, "id", 3L);
     }
 
     @Test
@@ -68,16 +72,36 @@ class ProblemServiceTest {
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
         given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
-        given(problemRepository.findById(any())).willReturn(Optional.of(problem));
+        given(problemRepository.findById(any())).willReturn(Optional.of(problem1));
         given(choiceRepository.findByProblemId(any())).willReturn(List.of());
         given(correctRateRedisService.getCorrectRate(any())).willReturn(null);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(request);
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, null));
 
         // Then
         assertThat(response).isNotNull();
-        assertThat(response.getContent()).isEqualTo("스택에 대한 설명으로 옳은 것은?");
+        assertThat(response.getTotalCount()).isEqualTo(3);
+        assertThat(response.getSolvedCount()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("totalCount와 solvedCount가 응답에 정확히 반영된다")
+    void 랜덤문제조회_totalCount_solvedCount_정확히반환() {
+        // Given: 전체 3문제, 1문제 풀이 완료
+        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
+        given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of(1L));
+        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+        given(problemRepository.findById(any())).willReturn(Optional.of(problem2));
+        given(choiceRepository.findByProblemId(any())).willReturn(List.of());
+        given(correctRateRedisService.getCorrectRate(any())).willReturn(null);
+
+        // When
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, null));
+
+        // Then
+        assertThat(response.getTotalCount()).isEqualTo(3);
+        assertThat(response.getSolvedCount()).isEqualTo(1);
     }
 
     @Test
@@ -89,35 +113,57 @@ class ProblemServiceTest {
         given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
 
         // When & Then
-        assertThatThrownBy(() -> problemService.getRandomProblem(request))
+        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L, null)))
                 .isInstanceOf(NoMoreProblemsException.class);
     }
 
     @Test
-    @DisplayName("직전에 건너뛴 문제는 랜덤 조회 대상에서 제외된다")
-    void 랜덤문제조회_직전건너뜀_제외() {
-        // Given: 문제 1, 2 중 문제 1이 직전에 건너뛰어졌고 문제 2가 미풀이
-        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L));
+    @DisplayName("skipProblemId 전달 시 Redis에 저장하고 해당 문제를 제외한다")
+    void 랜덤문제조회_skipProblemId_Redis저장_및_제외() {
+        // Given: 문제 1, 2, 3 중 1번을 스킵 → 2 또는 3이 반환되어야 함
+        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L); // 1번 건너뜀
-
-        Problem problem2 = Problem.builder()
-                .chapter(chapter)
-                .content("큐에 대한 설명은?")
-                .type(ProblemType.OBJECTIVE_SINGLE)
-                .explanation("큐는 FIFO 방식입니다.")
-                .build();
-        setField(problem2, "id", 2L);
-
-        given(problemRepository.findById(2L)).willReturn(Optional.of(problem2));
-        given(choiceRepository.findByProblemId(2L)).willReturn(List.of());
-        given(correctRateRedisService.getCorrectRate(2L)).willReturn(null);
+        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+        given(problemRepository.findById(any())).willReturn(Optional.of(problem2));
+        given(choiceRepository.findByProblemId(any())).willReturn(List.of());
+        given(correctRateRedisService.getCorrectRate(any())).willReturn(null);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(request);
+        problemService.getRandomProblem(buildRequest(1L, 1L, 1L));
 
-        // Then: 반환된 문제는 반드시 2번
-        assertThat(response.getContent()).isEqualTo("큐에 대한 설명은?");
+        // Then: Redis에 스킵 저장 호출 확인
+        verify(correctRateRedisService).saveSkippedProblem(1L, 1L, 1L);
+    }
+
+    @Test
+    @DisplayName("skipProblemId와 직전 건너뛴 문제 둘 다 제외된다")
+    void 랜덤문제조회_skipProblemId와_직전스킵_둘다_제외() {
+        // Given: 문제 1, 2, 3 / 직전 스킵=1 / 현재 스킵=2 → 반드시 3만 나와야 함
+        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
+        given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
+        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L);
+        given(problemRepository.findById(3L)).willReturn(Optional.of(problem3));
+        given(choiceRepository.findByProblemId(3L)).willReturn(List.of());
+        given(correctRateRedisService.getCorrectRate(3L)).willReturn(null);
+
+        // When
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, 2L));
+
+        // Then: 1(직전 스킵), 2(현재 스킵) 모두 제외 → 3번만 가능
+        assertThat(response.getContent()).isEqualTo("덱에 대한 설명은?");
+    }
+
+    @Test
+    @DisplayName("스킵 후 남은 문제가 없으면 NoMoreProblemsException이 발생한다")
+    void 랜덤문제조회_스킵후_남은문제없음_예외발생() {
+        // Given: 문제 1, 2 / 직전 스킵=1 / 현재 스킵=2 → 남은 문제 없음
+        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L));
+        given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
+        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L);
+
+        // When & Then
+        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L, 2L)))
+                .isInstanceOf(NoMoreProblemsException.class);
     }
 
     @Test
@@ -127,15 +173,23 @@ class ProblemServiceTest {
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
         given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
-        given(problemRepository.findById(1L)).willReturn(Optional.of(problem));
+        given(problemRepository.findById(1L)).willReturn(Optional.of(problem1));
         given(choiceRepository.findByProblemId(1L)).willReturn(List.of());
         given(correctRateRedisService.getCorrectRate(1L)).willReturn(67);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(request);
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, null));
 
         // Then
         assertThat(response.getAnswerCorrectRate()).isEqualTo(67);
+    }
+
+    private RandomProblemRequest buildRequest(Long chapterId, Long userId, Long skipProblemId) {
+        RandomProblemRequest request = new RandomProblemRequest();
+        setField(request, "chapterId", chapterId);
+        setField(request, "userId", userId);
+        setField(request, "skipProblemId", skipProblemId);
+        return request;
     }
 
     private void setField(Object target, String fieldName, Object value) {
