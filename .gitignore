@@ -18,9 +18,6 @@ out/
 # 환경변수 (민감 정보)
 .env
 
-# H2 로컬 파일 DB
-h2/
-
 # Claude - 개인 환경설정 제외
 .claude/launch.json
 .claude/settings.local.json
