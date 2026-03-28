@@ -1,6 +1,6 @@
 package com.problemsolving.api.submit;
 
-import com.problemsolving.api.redis.CorrectRateRedisService;
+import com.problemsolving.api.redis.ProblemRedisService;
 import com.problemsolving.api.submit.dto.SubmitRequest;
 import com.problemsolving.api.submit.dto.SubmitResponse;
 import com.problemsolving.api.submit.service.SubmitService;
@@ -34,7 +34,7 @@ class SubmitServiceTest {
     @Mock private ChoiceRepository choiceRepository;
     @Mock private UserProblemRepository userProblemRepository;
     @Mock private UserProblemChoiceRepository userProblemChoiceRepository;
-    @Mock private CorrectRateRedisService correctRateRedisService;
+    @Mock private ProblemRedisService problemRedisService;
 
     @InjectMocks
     private SubmitService submitService;

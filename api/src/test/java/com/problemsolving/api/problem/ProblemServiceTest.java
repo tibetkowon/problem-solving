@@ -1,10 +1,12 @@
 package com.problemsolving.api.problem;
 
+import com.problemsolving.api.common.exception.NoAvailableProblemsException;
 import com.problemsolving.api.common.exception.NoMoreProblemsException;
+import com.problemsolving.api.common.exception.NoProblemInChapterException;
 import com.problemsolving.api.problem.dto.RandomProblemRequest;
 import com.problemsolving.api.problem.dto.RandomProblemResponse;
 import com.problemsolving.api.problem.service.ProblemService;
-import com.problemsolving.api.redis.CorrectRateRedisService;
+import com.problemsolving.api.redis.ProblemRedisService;
 import com.problemsolving.core.constant.ProblemType;
 import com.problemsolving.core.domain.chapter.entity.Chapter;
 import com.problemsolving.core.domain.problem.entity.Problem;
@@ -25,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 
@@ -35,7 +38,7 @@ class ProblemServiceTest {
     @Mock private ProblemRepository problemRepository;
     @Mock private ChoiceRepository choiceRepository;
     @Mock private UserProblemRepository userProblemRepository;
-    @Mock private CorrectRateRedisService correctRateRedisService;
+    @Mock private ProblemRedisService problemRedisService;
 
     @InjectMocks
     private ProblemService problemService;
@@ -68,16 +71,17 @@ class ProblemServiceTest {
     @Test
     @DisplayName("미풀이 문제가 있으면 랜덤으로 1개를 반환한다")
     void 랜덤문제조회_미풀이_1개반환() {
-        // Given
+        // Given: 전체 3문제, 풀이 0, Redis 이력 없음
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(null);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
         given(problemRepository.findById(any())).willReturn(Optional.of(problem1));
         given(choiceRepository.findByProblemId(any())).willReturn(List.of());
-        given(correctRateRedisService.getCorrectRate(any())).willReturn(null);
+        given(problemRedisService.getCorrectRate(any())).willReturn(null);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, null));
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L));
 
         // Then
         assertThat(response).isNotNull();
@@ -86,22 +90,34 @@ class ProblemServiceTest {
     }
 
     @Test
-    @DisplayName("totalCount와 solvedCount가 응답에 정확히 반영된다")
-    void 랜덤문제조회_totalCount_solvedCount_정확히반환() {
-        // Given: 전체 3문제, 1문제 풀이 완료
+    @DisplayName("solvedCount는 해당 챕터 내 풀이 수만 반영된다 (다른 챕터 풀이 제외)")
+    void 랜덤문제조회_solvedCount_챕터내풀이만_반영() {
+        // Given: 챕터1 문제 [1,2,3], 풀이 완료 = [1(챕터1), 99(다른챕터)] → solvedCount = 1
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
-        given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of(1L));
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+        given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of(1L, 99L));
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(null);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
         given(problemRepository.findById(any())).willReturn(Optional.of(problem2));
         given(choiceRepository.findByProblemId(any())).willReturn(List.of());
-        given(correctRateRedisService.getCorrectRate(any())).willReturn(null);
+        given(problemRedisService.getCorrectRate(any())).willReturn(null);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, null));
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L));
 
-        // Then
+        // Then: 챕터1의 totalCount=3, 챕터1 내 solvedCount=1 (99번은 다른 챕터이므로 제외)
         assertThat(response.getTotalCount()).isEqualTo(3);
         assertThat(response.getSolvedCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("단원에 문제가 0개이면 NoProblemInChapterException이 발생한다")
+    void 랜덤문제조회_단원문제없음_예외발생() {
+        // Given
+        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of());
+
+        // When & Then
+        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L)))
+                .isInstanceOf(NoProblemInChapterException.class);
     }
 
     @Test
@@ -110,60 +126,84 @@ class ProblemServiceTest {
         // Given
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of(1L, 2L));
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
 
         // When & Then
-        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L, null)))
+        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L)))
                 .isInstanceOf(NoMoreProblemsException.class);
     }
 
     @Test
-    @DisplayName("skipProblemId 전달 시 Redis에 저장하고 해당 문제를 제외한다")
-    void 랜덤문제조회_skipProblemId_Redis저장_및_제외() {
-        // Given: 문제 1, 2, 3 중 1번을 스킵 → 2 또는 3이 반환되어야 함
+    @DisplayName("현재 노출 중인 문제는 제외되고 Redis에 lastSkipped로 이동된다")
+    void 랜덤문제조회_현재노출문제_제외_및_lastSkipped_저장() {
+        // Given: 문제 1, 2, 3 / 현재 노출 중인 문제 = 1 → 2 또는 3이 반환되어야 함
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(1L);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
         given(problemRepository.findById(any())).willReturn(Optional.of(problem2));
         given(choiceRepository.findByProblemId(any())).willReturn(List.of());
-        given(correctRateRedisService.getCorrectRate(any())).willReturn(null);
+        given(problemRedisService.getCorrectRate(any())).willReturn(null);
 
         // When
-        problemService.getRandomProblem(buildRequest(1L, 1L, 1L));
+        problemService.getRandomProblem(buildRequest(1L, 1L));
 
-        // Then: Redis에 스킵 저장 호출 확인
-        verify(correctRateRedisService).saveSkippedProblem(1L, 1L, 1L);
+        // Then: 이전 현재 문제(1)가 lastSkipped로 저장되는지 확인
+        verify(problemRedisService).saveLastSkippedProblem(1L, 1L, 1L);
+        // 새로 선택된 문제가 current로 저장되는지 확인
+        verify(problemRedisService).saveCurrentProblem(eq(1L), eq(1L), any());
     }
 
     @Test
-    @DisplayName("skipProblemId와 직전 건너뛴 문제 둘 다 제외된다")
-    void 랜덤문제조회_skipProblemId와_직전스킵_둘다_제외() {
-        // Given: 문제 1, 2, 3 / 직전 스킵=1 / 현재 스킵=2 → 반드시 3만 나와야 함
+    @DisplayName("현재 노출 문제와 직전 건너뛴 문제 둘 다 제외된다")
+    void 랜덤문제조회_현재노출문제와_lastSkipped_둘다_제외() {
+        // Given: 문제 1, 2, 3 / prevCurrent=2, lastSkipped=1 → 반드시 3만 나와야 함
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L, 3L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L);
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(2L);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L);
         given(problemRepository.findById(3L)).willReturn(Optional.of(problem3));
         given(choiceRepository.findByProblemId(3L)).willReturn(List.of());
-        given(correctRateRedisService.getCorrectRate(3L)).willReturn(null);
+        given(problemRedisService.getCorrectRate(3L)).willReturn(null);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, 2L));
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L));
 
-        // Then: 1(직전 스킵), 2(현재 스킵) 모두 제외 → 3번만 가능
+        // Then: 1(lastSkipped), 2(prevCurrent) 모두 제외 → 3번만 가능
         assertThat(response.getContent()).isEqualTo("덱에 대한 설명은?");
     }
 
     @Test
-    @DisplayName("스킵 후 남은 문제가 없으면 NoMoreProblemsException이 발생한다")
-    void 랜덤문제조회_스킵후_남은문제없음_예외발생() {
-        // Given: 문제 1, 2 / 직전 스킵=1 / 현재 스킵=2 → 남은 문제 없음
+    @DisplayName("lastSkipped 제외로 후보가 없으면 lastSkipped를 해제하고 재시도한다 (fallback)")
+    void 랜덤문제조회_lastSkipped_제외_후보없음_fallback() {
+        // Given: 문제 1, 2 / prevCurrent=2, lastSkipped=1 → 둘 다 제외 시 후보 없음
+        //        → fallback: lastSkipped(1) 해제, prevCurrent(2)만 제외 → 1번 반환
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L);
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(2L);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(1L);
+        given(problemRepository.findById(1L)).willReturn(Optional.of(problem1));
+        given(choiceRepository.findByProblemId(1L)).willReturn(List.of());
+        given(problemRedisService.getCorrectRate(1L)).willReturn(null);
 
-        // When & Then
-        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L, 2L)))
-                .isInstanceOf(NoMoreProblemsException.class);
+        // When
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L));
+
+        // Then: fallback으로 1번이 반환됨
+        assertThat(response.getContent()).isEqualTo("스택에 대한 설명은?");
+    }
+
+    @Test
+    @DisplayName("미풀이 문제가 1개이고 현재 노출 중이면 NoAvailableProblemsException이 발생한다")
+    void 랜덤문제조회_미풀이1개_현재노출중_예외발생() {
+        // Given: 전체 2문제, 1번 풀이 완료, 2번이 현재 노출 중 → 남은 미풀이 = [2], prevCurrent = 2 → 후보 없음
+        given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L, 2L));
+        given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of(1L));
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(2L);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+
+        // When & Then: 유일한 미풀이 문제가 현재 노출 중 → 넘길 수 있는 새 문제 없음
+        assertThatThrownBy(() -> problemService.getRandomProblem(buildRequest(1L, 1L)))
+                .isInstanceOf(NoAvailableProblemsException.class);
     }
 
     @Test
@@ -172,23 +212,23 @@ class ProblemServiceTest {
         // Given
         given(problemRepository.findIdsByChapterId(1L)).willReturn(List.of(1L));
         given(userProblemRepository.findSolvedProblemIdsByUserId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
+        given(problemRedisService.getCurrentProblemId(1L, 1L)).willReturn(null);
+        given(problemRedisService.getLastSkippedProblemId(1L, 1L)).willReturn(null);
         given(problemRepository.findById(1L)).willReturn(Optional.of(problem1));
         given(choiceRepository.findByProblemId(1L)).willReturn(List.of());
-        given(correctRateRedisService.getCorrectRate(1L)).willReturn(67);
+        given(problemRedisService.getCorrectRate(1L)).willReturn(67);
 
         // When
-        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L, null));
+        RandomProblemResponse response = problemService.getRandomProblem(buildRequest(1L, 1L));
 
         // Then
         assertThat(response.getAnswerCorrectRate()).isEqualTo(67);
     }
 
-    private RandomProblemRequest buildRequest(Long chapterId, Long userId, Long skipProblemId) {
+    private RandomProblemRequest buildRequest(Long chapterId, Long userId) {
         RandomProblemRequest request = new RandomProblemRequest();
         setField(request, "chapterId", chapterId);
         setField(request, "userId", userId);
-        setField(request, "skipProblemId", skipProblemId);
         return request;
     }
 
