@@ -64,6 +64,9 @@ public class SubmitService {
         if (userAnswer == null || userAnswer.isBlank()) {
             return AnswerStatus.WRONG;
         }
+        if (problem.getAnswer() == null) {
+            return AnswerStatus.WRONG;
+        }
         return problem.getAnswer().trim().equals(userAnswer.trim())
                 ? AnswerStatus.CORRECT
                 : AnswerStatus.WRONG;
