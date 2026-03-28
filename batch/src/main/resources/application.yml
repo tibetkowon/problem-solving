@@ -22,6 +22,11 @@ spring:
     redis:
       host: localhost
       port: 6379
+  h2:
+    console:
+      enabled: true
+      settings:
+        web-allow-others: true
 
 ---
 spring:
