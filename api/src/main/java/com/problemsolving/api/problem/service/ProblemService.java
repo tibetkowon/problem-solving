@@ -40,9 +40,11 @@ public class ProblemService {
 
         // 챕터 전체 문제 ID
         List<Long> allProblemIds = new ArrayList<>(problemRepository.findIdsByChapterId(chapterId));
+        int totalCount = allProblemIds.size();
 
         // 이미 푼 문제 제외
         List<Long> solvedIds = userProblemRepository.findSolvedProblemIdsByUserId(userId);
+        int solvedCount = solvedIds.size();
         allProblemIds.removeAll(solvedIds);
 
         // 직전에 건너뛴 문제 Redis에서 조회하여 제외
@@ -72,6 +74,6 @@ public class ProblemService {
         List<Choice> choices = choiceRepository.findByProblemId(selectedProblemId);
         Integer correctRate = correctRateRedisService.getCorrectRate(selectedProblemId);
 
-        return new RandomProblemResponse(problem, choices, correctRate);
+        return new RandomProblemResponse(problem, choices, correctRate, totalCount, solvedCount);
     }
 }

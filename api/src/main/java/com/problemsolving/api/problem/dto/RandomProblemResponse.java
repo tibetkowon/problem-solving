@@ -27,12 +27,21 @@ public class RandomProblemResponse {
     @Schema(description = "정답률 (30명 이상 제출 시에만 반환, 미만이면 null)", example = "67")
     private final Integer answerCorrectRate;
 
-    public RandomProblemResponse(Problem problem, List<Choice> choices, Integer answerCorrectRate) {
+    @Schema(description = "챕터 전체 문제 수", example = "10")
+    private final int totalCount;
+
+    @Schema(description = "사용자가 푼 문제 수", example = "3")
+    private final int solvedCount;
+
+    public RandomProblemResponse(Problem problem, List<Choice> choices, Integer answerCorrectRate,
+                                 int totalCount, int solvedCount) {
         this.problemId = problem.getId();
         this.content = problem.getContent();
         this.problemType = problem.getType();
         this.choices = choices.stream().map(ChoiceDto::new).toList();
         this.answerCorrectRate = answerCorrectRate;
+        this.totalCount = totalCount;
+        this.solvedCount = solvedCount;
     }
 
     @Getter
