@@ -1,7 +1,7 @@
 package com.problemsolving.api.submit.service;
 
 import com.problemsolving.api.common.exception.ResourceNotFoundException;
-import com.problemsolving.api.redis.CorrectRateRedisService;
+import com.problemsolving.api.redis.ProblemRedisService;
 import com.problemsolving.api.submit.dto.SubmitRequest;
 import com.problemsolving.api.submit.dto.SubmitResponse;
 import com.problemsolving.core.constant.AnswerStatus;
@@ -27,7 +27,7 @@ public class SubmitService {
     private final ChoiceRepository choiceRepository;
     private final UserProblemRepository userProblemRepository;
     private final UserProblemChoiceRepository userProblemChoiceRepository;
-    private final CorrectRateRedisService correctRateRedisService;
+    private final ProblemRedisService problemRedisService;
 
     @Transactional
     public SubmitResponse submit(SubmitRequest request) {
@@ -52,7 +52,7 @@ public class SubmitService {
 
         // 정답률은 CORRECT인 경우만 정답으로 카운트 (부분 정답은 오답으로 처리)
         boolean isCorrectForRate = answerStatus == AnswerStatus.CORRECT;
-        correctRateRedisService.incrementCorrectRate(problem.getId(), isCorrectForRate);
+        problemRedisService.incrementCorrectRate(problem.getId(), isCorrectForRate);
 
         return response;
     }

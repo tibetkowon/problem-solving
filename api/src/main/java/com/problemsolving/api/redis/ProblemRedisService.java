@@ -7,28 +7,34 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 
 /**
- * 정답률 Redis 캐시 서비스
+ * 문제 관련 Redis 서비스
  *
- * Redis Hash 구조:
+ * [정답률 캐시] Redis Hash 구조:
  *   Key:   correct_rate:{problemId}
  *   Field: submit  → 제출 수
  *          correct → 정답 수
  *
- * 건너뛰기 Redis 구조:
- *   Key:   skip:{userId}:{chapterId}
- *   Value: 직전에 건너뛴 problemId (String)
+ * [현재 노출 문제] Redis String 구조:
+ *   Key:   current:{userId}:{chapterId}
+ *   Value: 현재 사용자에게 보여주고 있는 problemId
+ *   TTL:   1시간
+ *
+ * [직전 건너뛴 문제] Redis String 구조:
+ *   Key:   last_skip:{userId}:{chapterId}
+ *   Value: 이전에 보여줬던 problemId (2단계 전 문제)
  *   TTL:   1시간
  */
 @Service
 @RequiredArgsConstructor
-public class CorrectRateRedisService {
+public class ProblemRedisService {
 
     private static final String CORRECT_RATE_KEY_PREFIX = "correct_rate:";
-    private static final String SKIP_KEY_PREFIX = "skip:";
+    private static final String CURRENT_KEY_PREFIX = "current:";
+    private static final String LAST_SKIP_KEY_PREFIX = "last_skip:";
     private static final String FIELD_SUBMIT = "submit";
     private static final String FIELD_CORRECT = "correct";
     private static final int MIN_SUBMIT_COUNT = 30;
-    private static final Duration SKIP_TTL = Duration.ofHours(1);
+    private static final Duration SESSION_TTL = Duration.ofHours(1);
 
     private final RedisTemplate<String, String> redisTemplate;
 
@@ -84,23 +90,37 @@ public class CorrectRateRedisService {
         return new long[]{submit, correct};
     }
 
-    // ── 건너뛰기 관련 ────────────────────────────────────────────────
+    // ── 현재 노출 문제 관련 ────────────────────────────────────────────────
 
     /**
-     * 사용자가 문제를 건너뛸 때 Redis에 직전 건너뛴 문제 ID를 저장한다.
-     * TTL 1시간으로 세션성 데이터로 관리한다.
+     * 현재 사용자에게 보여주고 있는 문제 ID를 Redis에 저장한다.
      */
-    public void saveSkippedProblem(Long userId, Long chapterId, Long problemId) {
-        String key = skipKey(userId, chapterId);
-        redisTemplate.opsForValue().set(key, String.valueOf(problemId), SKIP_TTL);
+    public void saveCurrentProblem(Long userId, Long chapterId, Long problemId) {
+        redisTemplate.opsForValue().set(currentKey(userId, chapterId), String.valueOf(problemId), SESSION_TTL);
+    }
+
+    /**
+     * 현재 사용자에게 보여주고 있는 문제 ID를 조회한다. 없으면 null을 반환한다.
+     */
+    public Long getCurrentProblemId(Long userId, Long chapterId) {
+        String value = redisTemplate.opsForValue().get(currentKey(userId, chapterId));
+        return value != null ? Long.parseLong(value) : null;
+    }
+
+    // ── 직전 건너뛴 문제 관련 ────────────────────────────────────────────────
+
+    /**
+     * 직전에 건너뛴 문제 ID를 Redis에 저장한다.
+     */
+    public void saveLastSkippedProblem(Long userId, Long chapterId, Long problemId) {
+        redisTemplate.opsForValue().set(lastSkipKey(userId, chapterId), String.valueOf(problemId), SESSION_TTL);
     }
 
     /**
      * 직전에 건너뛴 문제 ID를 조회한다. 없으면 null을 반환한다.
      */
     public Long getLastSkippedProblemId(Long userId, Long chapterId) {
-        String key = skipKey(userId, chapterId);
-        String value = redisTemplate.opsForValue().get(key);
+        String value = redisTemplate.opsForValue().get(lastSkipKey(userId, chapterId));
         return value != null ? Long.parseLong(value) : null;
     }
 
@@ -110,7 +130,11 @@ public class CorrectRateRedisService {
         return CORRECT_RATE_KEY_PREFIX + problemId;
     }
 
-    private String skipKey(Long userId, Long chapterId) {
-        return SKIP_KEY_PREFIX + userId + ":" + chapterId;
+    private String currentKey(Long userId, Long chapterId) {
+        return CURRENT_KEY_PREFIX + userId + ":" + chapterId;
+    }
+
+    private String lastSkipKey(Long userId, Long chapterId) {
+        return LAST_SKIP_KEY_PREFIX + userId + ":" + chapterId;
     }
 }
